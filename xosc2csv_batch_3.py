@@ -72,6 +72,7 @@ def parse_xosc_trajectory(file_path, city_name, use_obstacle_as_ego=False):
     trajectory_data = []
     all_timestamps = set()
     obstacle_candidates = {}  # Track obstacle vehicles
+    timestamp_agent_counts = {}  # Track number of agents per timestamp
 
     for trajectory in root.findall(".//Trajectory"):
         trajectory_name = trajectory.get("name")
@@ -89,8 +90,6 @@ def parse_xosc_trajectory(file_path, city_name, use_obstacle_as_ego=False):
                 object_type = "AV" if "Ego" in trajectory_name else "AGENT"
                 track_id = 0 if "Ego" in trajectory_name else abs(hash(trajectory_name))
                 formatted_track_id = format_track_id(track_id)
-                # if object_type == "AGENT":
-                #     agent_num += 1
 
                 entry = {
                     "TIMESTAMP": time,
@@ -103,13 +102,21 @@ def parse_xosc_trajectory(file_path, city_name, use_obstacle_as_ego=False):
 
                 trajectory_data.append(entry)
 
-                # Collect potential obstacles
+                # Update agent count for this timestamp
                 if object_type == "AGENT":
+                    timestamp_agent_counts[time] = timestamp_agent_counts.get(time, 0) + 1
                     if time < 3.0:
                         agent_num += 1
                     if formatted_track_id not in obstacle_candidates:
                         obstacle_candidates[formatted_track_id] = []
                     obstacle_candidates[formatted_track_id].append(entry)
+
+    # Check if any timestamp has zero agents
+    for time, count in timestamp_agent_counts.items():
+        if count == 0:
+            raise ValueError(f"Timestamp {time} has no obstacle vehicles")
+        if count <= 1 and use_obstacle_as_ego:
+            raise ValueError(f"Timestamp {time} has no obstacle vehicles")
 
     if use_obstacle_as_ego:
         # Find an obstacle that exists at all timestamps
@@ -196,11 +203,9 @@ def batch_process_xosc_files(input_dir, output_dir, use_obstacle_as_ego=False, s
                 csv_path = os.path.join(output_dir, csv_file_name)
 
                 try:
-                    # trajectory_data, agent_num = parse_xosc_trajectory(xosc_path, folder_name, use_obstacle_as_ego)
                     trajectory_data, agent_num, time_steps = parse_xosc_trajectory(
                         xosc_path, folder_name, use_obstacle_as_ego
                     )
-                    # print(agent_num, counter)
                     if agent_num == 0:
                         print_red(f"{xosc_path}: No agent in first 3s!")
                         continue
@@ -209,13 +214,18 @@ def batch_process_xosc_files(input_dir, output_dir, use_obstacle_as_ego=False, s
                         continue
                     save_to_csv(trajectory_data, csv_path)
                     counter += 1
+                except ValueError as e:
+                    if "no obstacle vehicles" in str(e):
+                        print_red(f"Skipping {xosc_path}: {e}")
+                        continue
+                    print_red(f"Failed to process {xosc_path}: {e}")
                 except Exception as e:
                     print_red(f"Failed to process {xosc_path}: {e}")
 
 if __name__ == "__main__":
     # input_directory = "E:\\RLearning\\18.Onsite-2\\4.第一赛道B卷\\replay"  # "input_mia"  # Replace with your input directory
     input_directory = "E:\\RLearning\\22.Onsite-3\\第一赛道_A卷"
-    output_directory = "output_mia"  # Replace with your output directory
+    output_directory = "output_mia"
 
     # 配置选项
     use_obstacle = True  # 是否使用障碍车作为自车
@@ -226,4 +236,3 @@ if __name__ == "__main__":
     batch_process_xosc_files(input_directory, output_directory, use_obstacle_as_ego=use_obstacle,
                              sequential_filenames=sequential_filenames, check_size=check_size, expected_size=expected_size)
     print("Batch processing completed.")
-

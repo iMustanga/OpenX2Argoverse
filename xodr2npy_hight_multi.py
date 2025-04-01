@@ -209,7 +209,8 @@ def batch_convert_xodr_to_ground_height(input_folder, output_folder, resolution=
 
 if __name__ == "__main__":
     output_file = batch_convert_xodr_to_ground_height(
-        input_folder="input_mia",
+        # input_folder="input_mia",
+        input_folder="E:\\RLearning\\22.Onsite-3\\第一赛道_A卷",
         output_folder="output_mia",
         resolution=0.5
     )

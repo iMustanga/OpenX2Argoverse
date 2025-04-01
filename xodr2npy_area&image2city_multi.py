@@ -257,8 +257,8 @@ def batch_convert_xodr_to_driveable_area(input_folder, output_folder, resolution
 
 
 if __name__ == "__main__":
-    input_folder = "input_mia"  # 替换为实际输入文件夹路径
-    # input_folder = "E:\\RLearning\\18.Onsite-2\\4.第一赛道B卷\\replay"
+    # input_folder = "input_mia"  # 替换为实际输入文件夹路径
+    input_folder = "E:\\RLearning\\22.Onsite-3\\第一赛道_A卷"
     output_folder = "output_mia"  # 替换为实际输出文件夹路径
     resolution = 0.5  # 每个像素对应 0.5 米
     batch_convert_xodr_to_driveable_area(input_folder, output_folder, resolution)

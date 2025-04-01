@@ -155,7 +155,8 @@ def batch_convert_xodr_to_bbox_table(input_folder, output_folder):
 
 
 if __name__ == "__main__":
-    input_folder = "input_mia"  # 替换为实际输入文件夹路径
+    # input_folder = "input_mia"  # 替换为实际输入文件夹路径
+    input_folder = "E:\\RLearning\\22.Onsite-3\\第一赛道_A卷"
     output_folder = "output_mia"  # 替换为实际输出文件夹路径
 
     # 批量转换并合并文件
