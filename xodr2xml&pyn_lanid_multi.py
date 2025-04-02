@@ -218,20 +218,19 @@ def save_vector_map_to_xml(nodes, ways, output_file):
 
     print(f"Saved vector map to {output_file}")
 
-
 def batch_convert_xodr_to_vector_map_and_json(input_folder, output_folder):
     """
-    批量转换.xodr文件并合并到单一输出文件
+    批量转换.xodr文件并合并到单一输出文件，添加数据去重功能
     """
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
-    global_nodes = []  # 全局节点存储
-    global_ways = []  # 全局车道存储
+    # 使用字典存储全局数据用于去重
+    global_nodes = {}  # {node_key: node_data}
+    global_ways = {}  # {way_hash: way_data}
     global_mapping = {}  # 全局映射表
     existing_lane_ids = set()  # 全局唯一ID集合
     table_idx_counter = 0  # 全局tableidx计数器
-    node_id_counter = 0  # 全局节点ID计数器
 
     # 第一阶段：递归处理所有.xodr文件
     for root_dir, dirs, files in os.walk(input_folder):
@@ -241,87 +240,91 @@ def batch_convert_xodr_to_vector_map_and_json(input_folder, output_folder):
                 print(f"Processing {xodr_path}")
 
                 try:
-                    # 解析单个文件
                     tree = ET.parse(xodr_path)
                     root = tree.getroot()
 
-                    local_nodes = []  # 当前文件的节点
-                    local_way_mapping = {}  # 本地tableidx到全局的映射
-
                     # 处理道路几何信息
                     for road in root.findall(".//road"):
-                        road_geometry = []
-
-                        # 提取几何点并生成全局唯一ID
+                        # 处理几何节点并去重
+                        road_nodes = []
                         for geometry in road.findall(".//geometry"):
-                            x = float(geometry.get("x"))
-                            y = float(geometry.get("y"))
-                            local_nodes.append({
-                                "id": node_id_counter,
-                                "x": x,
-                                "y": y
-                            })
-                            road_geometry.append({
-                                "id": node_id_counter,
-                                "x": x,
-                                "y": y
-                            })
-                            node_id_counter += 1
+                            x = round(float(geometry.get("x")), 4)  # 精度控制
+                            y = round(float(geometry.get("y")), 4)
+                            node_key = f"{x}_{y}"  # 基于坐标的哈希键
+
+                            if node_key not in global_nodes:
+                                # 生成新节点ID为当前全局节点数量
+                                new_node_id = len(global_nodes)
+                                global_nodes[node_key] = {
+                                    "id": new_node_id,
+                                    "x": x,
+                                    "y": y
+                                }
+                            road_nodes.append(global_nodes[node_key])
+
+                        # 跳过空几何的道路
+                        if not road_nodes:
+                            continue
 
                         # 处理车道信息
                         for lane_section in road.findall(".//laneSection"):
                             for lane in lane_section.findall(".//lane"):
-                                # 生成全局唯一lane_id
-                                lane_id = generate_unique_lane_id(existing_lane_ids)
+                                # 生成车道特征哈希
+                                lane_hash = hash(
+                                    (tuple((n["x"], n["y"]) for n in road_nodes),
+                                     lane.get("type", "driving"),
+                                     lane.get("width", "3.5")
+                                     ))
 
-                                # 记录映射关系
-                                local_tableidx = table_idx_counter
-                                global_mapping[str(local_tableidx)] = lane_id
-                                local_way_mapping[local_tableidx] = lane_id
+                                # 如果车道已存在，复用现有数据
+                                # if lane_hash in global_ways:
+                                #     # existing_lane_id = global_ways[lane_hash]["lane_id"]
+                                #     # global_mapping[str(table_idx_counter)] = existing_lane_id
+                                #     # table_idx_counter += 1
+                                #     continue
+                                if lane_hash not in global_ways:
 
-                                # 构建车道数据
-                                way_data = {
-                                    "lane_id": lane_id,
-                                    "lane_type": lane.get("type", "driving"),
-                                    "width": lane.get("width", "3.5"),
-                                    "geometry": road_geometry.copy(),
-                                    "tags": {
-                                        "predecessor": [],
-                                        "successor": [],
-                                        "l_neighbor_id": lane.get("l_neighbor_id", "None"),
-                                        "r_neighbor_id": lane.get("r_neighbor_id", "None")
+                                    # 生成新lane_id
+                                    new_lane_id = generate_unique_lane_id(existing_lane_ids)
+                                    global_mapping[str(table_idx_counter)] = new_lane_id
+
+                                    # 构建车道数据
+                                    way_data = {
+                                        "lane_id": new_lane_id,
+                                        "lane_type": lane.get("type", "driving"),
+                                        "width": lane.get("width", "3.5"),
+                                        "geometry": road_nodes.copy(),
+                                        "tags": {
+                                            "predecessor": [],
+                                            "successor": [],
+                                            "l_neighbor_id": "None",
+                                            "r_neighbor_id": "None"
+                                        }
                                     }
-                                }
 
-                                # 处理连接关系
-                                link = road.find(".//link")
-                                if link is not None:
-                                    predecessor = link.find("predecessor")
-                                    successor = link.find("successor")
-                                    if predecessor is not None:
-                                        way_data["tags"]["predecessor"].append(
-                                            predecessor.get("elementId"))
-                                    if successor is not None:
-                                        way_data["tags"]["successor"].append(
-                                            successor.get("elementId"))
+                                    # 处理邻居关系
+                                    neighbors = lane.find("neighbors")
+                                    if neighbors is not None:
+                                        way_data["tags"]["l_neighbor_id"] = neighbors.get("left", "None")
+                                        way_data["tags"]["r_neighbor_id"] = neighbors.get("right", "None")
 
-                                global_ways.append(way_data)
-                                table_idx_counter += 1
-
-                    # 合并节点数据
-                    global_nodes.extend(local_nodes)
+                                    # 添加到全局数据
+                                    global_ways[lane_hash] = way_data
+                                    table_idx_counter += 1
 
                 except Exception as e:
                     print_red(f"Error processing {xodr_path}: {e}")
 
     # 第二阶段：保存合并结果
     if global_nodes and global_ways:
-        # 保存向量地图
-        # print(global_nodes)
+        # 转换节点数据结构
+        final_nodes = list(global_nodes.values())
+
+        # 生成最终向量地图文件
         vector_map_file = os.path.join(output_folder, "pruned_argoverse_MIA_10316_vector_map.xml")
         save_vector_map_to_xml(
-            nodes=global_nodes,
-            ways=global_ways,
+            nodes=final_nodes,
+            ways=list(global_ways.values()),
             output_file=vector_map_file
         )
 
@@ -331,16 +334,14 @@ def batch_convert_xodr_to_vector_map_and_json(input_folder, output_folder):
             json.dump(global_mapping, f, indent=4)
         print(f"Saved combined mapping to {json_file}")
 
-        # 可视化验证
-        # visualize_vector_map(vector_map_file)
-        # load_and_visualize_mapping(json_file)
     else:
         print_red("No valid data found in input files")
 
 
 if __name__ == "__main__":
     # input_folder = "input_mia"
-    input_folder = "E:\\RLearning\\22.Onsite-3\\第一赛道_A卷"
+    # input_folder = "E:\\RLearning\\22.Onsite-3\\第一赛道_A卷"
+    input_folder = "E:\\RLearning\\22.Onsite-3\\第一赛道_B卷\\replay"
     output_folder = "output_mia"
 
     # 设置随机种子保证lane_id生成可复现
