@@ -340,8 +340,8 @@ def batch_convert_xodr_to_vector_map_and_json(input_folder, output_folder):
 
 if __name__ == "__main__":
     # input_folder = "input_mia"
-    # input_folder = "E:\\RLearning\\22.Onsite-3\\第一赛道_A卷"
-    input_folder = "E:\\RLearning\\22.Onsite-3\\第一赛道_B卷\\replay"
+    input_folder = "E:\\RLearning\\22.Onsite-3\\第一赛道_A卷"
+    # input_folder = "E:\\RLearning\\22.Onsite-3\\第一赛道_B卷\\replay"
     output_folder = "output_mia"
 
     # 设置随机种子保证lane_id生成可复现
